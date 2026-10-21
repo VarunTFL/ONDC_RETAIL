@@ -28,7 +28,7 @@ Route::group(['prefix' => 'ondc', 'middleware' => ['api']], function () {
     Route::post('/update',    [UpdateController::class, 'update']);     // part-cancel / replacement / exchange
     Route::post('/on_update', [UpdateController::class, 'onUpdate']);
     
-    // RSF 2.0 — NP-NP seller-side settlement flow
+    // RSF 2.0 
     Route::post('/settle',    [RsfController::class, 'settle']);
     Route::post('/on_settle', [RsfController::class, 'onSettle']);
 });
