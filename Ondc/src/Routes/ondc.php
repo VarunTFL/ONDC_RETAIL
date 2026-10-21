@@ -31,6 +31,11 @@ Route::group(['prefix' => 'ondc', 'middleware' => ['api']], function () {
     // RSF 2.0 
     Route::post('/settle',    [RsfController::class, 'settle']);
     Route::post('/on_settle', [RsfController::class, 'onSettle']);
+
+    // These are separate NIL-only routes,
+    Route::post('/nil/settle', [RsfController::class, 'nilSettle']);
+    Route::post('/nil/on_settle', [RsfController::class, 'nilOnSettle']);
+
 });
 
 /*
