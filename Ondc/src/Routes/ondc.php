@@ -36,6 +36,10 @@ Route::group(['prefix' => 'ondc', 'middleware' => ['api']], function () {
     Route::post('/nil/settle', [RsfController::class, 'nilSettle']);
     Route::post('/nil/on_settle', [RsfController::class, 'nilOnSettle']);
 
+    // RSF 2.0 — REPORT flow (add inside the existing /ondc route group)
+    Route::post('/report',    [RsfController::class, 'report']);
+    Route::post('/on_report', [RsfController::class, 'onReport']);
+
 });
 
 /*
