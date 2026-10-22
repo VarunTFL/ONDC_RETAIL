@@ -40,6 +40,10 @@ Route::group(['prefix' => 'ondc', 'middleware' => ['api']], function () {
     Route::post('/report',    [RsfController::class, 'report']);
     Route::post('/on_report', [RsfController::class, 'onReport']);
 
+    // RSF 2.0 — RECON flow
+    Route::post('/recon',    [RsfController::class, 'recon']);
+    Route::post('/on_recon', [RsfController::class, 'onRecon']);
+
 });
 
 /*
