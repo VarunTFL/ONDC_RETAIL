@@ -51,6 +51,16 @@ class RsfController extends Controller
                 ->timeout(30)
                 ->post($bppUri . '/settle', $payload);
 
+
+            if ($response->failed()) {
+            Log::warning('[RSF][SETTLE] Settlement Agency error response', [
+                'transaction_id' => $context['transaction_id'] ?? null,
+                'message_id' => $context['message_id'] ?? null,
+                'http_status' => $response->status(),
+                'response' => $response->json() ?? $response->body(),
+            ]);
+        }
+
             Log::info('[RSF][SETTLE] Settlement Agency response received', [
                 'transaction_id' => $context['transaction_id'] ?? null,
                 'message_id' => $context['message_id'] ?? null,
@@ -77,21 +87,60 @@ class RsfController extends Controller
      * Receive the Settlement Agency's on_settle callback.
      * Settlement callback data is intentionally not persisted at this stage.
      */
+   
     public function onSettle(Request $request)
     {
         $payload = $request->all();
         $context = $payload['context'] ?? null;
 
-        if (!is_array($context) || !isset($payload['message'])) {
+        // Validate context and ensure either message or error is present.
+        if (
+            !is_array($context) ||
+            (!isset($payload['message']) && !isset($payload['error']))
+        ) {
             return response()->json([
-                'error' => 'Invalid payload: context or message missing',
+                'error' => 'Invalid payload: context and message or error missing',
             ], 400);
         }
 
-        if (($context['domain'] ?? null) !== 'ONDC:NTS10'
-            || ($context['action'] ?? null) !== 'on_settle') {
+        // Validate ONDC domain and callback action.
+        if (
+            ($context['domain'] ?? null) !== 'ONDC:NTS10' ||
+            ($context['action'] ?? null) !== 'on_settle'
+        ) {
             return response()->json([
                 'error' => 'Invalid RSF context: expected domain ONDC:NTS10 and action on_settle',
+            ], 400);
+        }
+
+        // Handle an error response from the Settlement Agency.
+        if (isset($payload['error'])) {
+            if (!is_array($payload['error'])) {
+                return response()->json([
+                    'error' => 'Invalid payload: error must be an object',
+                ], 400);
+            }
+
+            Log::warning('[RSF][ON_SETTLE] Error callback received', [
+                'transaction_id' => $context['transaction_id'] ?? null,
+                'message_id' => $context['message_id'] ?? null,
+                'error_code' => $payload['error']['code'] ?? null,
+                'error_message' => $payload['error']['message'] ?? null,
+            ]);
+
+            return response()->json([
+                'message' => [
+                    'ack' => [
+                        'status' => 'ACK',
+                    ],
+                ],
+            ], 200);
+        }
+
+        // Validate a normal successful callback.
+        if (!is_array($payload['message'])) {
+            return response()->json([
+                'error' => 'Invalid payload: message must be an object',
             ], 400);
         }
 
@@ -101,6 +150,7 @@ class RsfController extends Controller
             'settlement_id' => data_get($payload, 'message.settlement.id'),
         ]);
 
+        // Acknowledge the successful callback.
         return response()->json([
             'message' => [
                 'ack' => [
@@ -109,6 +159,7 @@ class RsfController extends Controller
             ],
         ], 200);
     }
+
       /*
     |--------------------------------------------------------------------------
     | RSF 2.0 — NIL Settlement Flow (ADD-ON)
