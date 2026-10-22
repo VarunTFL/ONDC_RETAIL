@@ -509,40 +509,83 @@ public function recon(Request $request)
     }
 }
 
+
 /**
- * Receive the counterparty's on_recon callback. The reconciliation details
- * are accepted and summarized in logs, but are not persisted by this add-on.
+ * Receive the counterparty's on_recon callback.
+ * Handles both successful reconciliation responses and error callbacks.
  */
 public function onRecon(Request $request)
 {
     $payload = $request->all();
     $context = $payload['context'] ?? null;
-    $message = $payload['message'] ?? null;
-    $orders = is_array($message) ? ($message['orders'] ?? null) : null;
 
-    if (!is_array($context) || !is_array($message)) {
-        return response()->json(['error' => 'Invalid payload: context or message missing'], 400);
+    if (
+        !is_array($context) ||
+        (!isset($payload['message']) && !isset($payload['error']))
+    ) {
+        return response()->json([
+            'error' => 'Invalid payload: context and message or error are required',
+        ], 400);
     }
 
-    if (($context['domain'] ?? null) !== 'ONDC:NTS10' || ($context['action'] ?? null) !== 'on_recon') {
-        return response()->json(['error' => 'Invalid RSF context: expected domain ONDC:NTS10 and action on_recon'], 400);
+    if (
+        ($context['domain'] ?? null) !== 'ONDC:NTS10' ||
+        ($context['action'] ?? null) !== 'on_recon'
+    ) {
+        return response()->json([
+            'error' => 'Invalid RSF context: expected domain ONDC:NTS10 and action on_recon',
+        ], 400);
     }
 
-    if (!is_array($orders) || count($orders) === 0) {
-        return response()->json(['error' => 'Required message field missing or invalid: message.orders'], 400);
+    // Handle an error callback, such as 70030: Invalid Order Id.
+    if (isset($payload['error'])) {
+        if (!is_array($payload['error'])) {
+            return response()->json([
+                'error' => 'Invalid payload: error must be an object',
+            ], 400);
+        }
+
+        Log::warning('[RSF][ON_RECON] Error callback received', [
+            'transaction_id' => $context['transaction_id'] ?? null,
+            'message_id' => $context['message_id'] ?? null,
+            'error_code' => $payload['error']['code'] ?? null,
+            'error_message' => $payload['error']['message'] ?? null,
+        ]);
+
+        return response()->json([
+            'message' => [
+                'ack' => [
+                    'status' => 'ACK',
+                ],
+            ],
+        ], 200);
+    }
+
+    // Validate a successful reconciliation response.
+    $message = $payload['message'];
+
+    if (
+        !is_array($message) ||
+        !isset($message['orders']) ||
+        !is_array($message['orders'])
+    ) {
+        return response()->json([
+            'error' => 'Invalid payload: message.orders must be an array',
+        ], 400);
     }
 
     $settlementCount = 0;
-    foreach ($orders as $order) {
+
+    foreach ($message['orders'] as $order) {
         if (is_array($order) && is_array($order['settlements'] ?? null)) {
             $settlementCount += count($order['settlements']);
         }
     }
 
-    Log::info('[RSF][ON_RECON] Reconciliation response received', [
+    Log::info('[RSF][ON_RECON] Reconciliation callback received', [
         'transaction_id' => $context['transaction_id'] ?? null,
         'message_id' => $context['message_id'] ?? null,
-        'order_count' => count($orders),
+        'order_count' => count($message['orders']),
         'settlement_count' => $settlementCount,
     ]);
 
@@ -554,5 +597,6 @@ public function onRecon(Request $request)
         ],
     ], 200);
 }
+
 }
 
